@@ -17,20 +17,24 @@ image = modal.Image.debian_slim().pip_install("boto3", "pandas", "pyarrow", "req
 web_app = FastAPI()
 app = modal.App(name="has-simple-web-endpoint", image=image)
 
-@web_app.post("/sent-to-s3")
+@web_app.post("/api/upload")
 async def setToS3(request: Request):
     body = await request.json()
     # get content element from body
     
-    response = process_markdown_array_to_s3.remote(body['contents'], body['file_name'])
+    response = process_markdown_array_to_s3.remote(body['data'], body['url'])
     
     return response
 
 @app.function(secrets=[modal.Secret.from_name("s3-credential")])
 def process_markdown_array_to_s3(
     markdown_array: List[Dict[str, str]],
-    file_name: str,
+    url: str,
 ) -> Dict[str, Any]:
+    
+    print(markdown_array)
+    print(url)
+
     """
     Convert array of markdown objects to parquet and upload to S3
     """
@@ -58,10 +62,16 @@ def process_markdown_array_to_s3(
         # Get bytes and upload
         parquet_bytes = buf.getvalue()
         buf.close()
+
+        # create filename
+        path = url.split('/')[-1]
+        title, id = path.split('-', 1)
+    
+        filename = f"{title.lower().replace(' ', '_')}_{id}"
         
         return upload_to_s3_api.remote(
             parquet_bytes=parquet_bytes,
-            file_name=file_name,
+            file_name=filename,
             bucket=bucket,
             base_path=base_path,
             api_token=api_token,
