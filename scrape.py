@@ -19,28 +19,19 @@ app = modal.App(name="has-simple-web-endpoint", image=image)
 vol = modal.Volume.from_name("output", create_if_missing=True)
 
 @web_app.post("/api/upload")
-async def setToS3(request: Request):
-    body = await request.json()
-    # get content element from body
-    
-    response = process_markdown_array_to_s3.remote(body['data'], body['url'])
-    
-    return response
-
-@web_app.post("/api/upload-to-volume")
 async def uploadToVolumn(request: Request):
     body = await request.json()
     return process_org_data.remote(
         markdown_data=body['data'],
         url=body['url'],
-        org_name=body['org']
+        workspaceName=body['workspaceName']
     )
 
 @app.function(volumes={"/output": vol}, secrets=[modal.Secret.from_name("s3-credential")])
 def process_org_data(
     markdown_data: str,
     url: str,
-    org_name: str,
+    workspaceName: str,
 ) -> Dict[str, Any]:
     """Process markdown data and manage parquet file"""
     try:
@@ -49,14 +40,14 @@ def process_org_data(
         title, id = '-'.join(path.split('-')[:-1]), path.split('-')[-1]
         
         # Create filename
-        filename = get_file_name.remote(org_name=org_name)
+        filename = get_file_name.remote(org_name=workspaceName)
         file_path = f"/output/{filename}"
         
         # Create new data row
         from datetime import datetime
         new_data = {
             'id': [id],
-            'org_name': [org_name],
+            'org_name': [workspaceName],
             'title': [title],
             'data': [markdown_data],
             'updated_at': [datetime.now().isoformat()],
@@ -165,11 +156,10 @@ def get_file_name(
         }
         params = {
             "bucket": os.environ["BUCKET"],
-            "prefix": f"data/uploads/2024/{org_name}_chunk_"
+            "prefix": f"data/uploads/2024/{org_prefix}_chunk_"
         }
         
         response = requests.get(api_url, headers=headers, params=params)
-        print('response', response)
         response.raise_for_status()
         
         data = response.json()
