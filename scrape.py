@@ -21,14 +21,14 @@ vol = modal.Volume.from_name("output", create_if_missing=True)
 @web_app.post("/api/upload")
 async def uploadToVolumn(request: Request):
     body = await request.json()
-    return process_org_data.remote(
+    return process_page_data.remote(
         markdown_data=body['data'],
         url=body['url'],
         workspaceName=body['workspaceName']
     )
 
 @app.function(volumes={"/output": vol}, secrets=[modal.Secret.from_name("s3-credential")])
-def process_org_data(
+def process_page_data(
     markdown_data: str,
     url: str,
     workspaceName: str,
@@ -277,59 +277,6 @@ def send_all_file_to_s3() -> Dict[str, Any]:
             "success": False,
             "error": f"Critical error processing files: {str(e)}"
         }
-    
-@app.function(secrets=[modal.Secret.from_name("s3-credential")])
-def process_markdown_array_to_s3(
-    markdown_array: List[Dict[str, str]],
-    url: str,
-) -> Dict[str, Any]:
-    """
-    Convert array of markdown objects to parquet and upload to S3
-    """
-    api_url=os.environ["API_URL"]
-    api_token=os.environ["API_TOKEN"]
-    base_path=os.environ["BASE_PATH"]
-    bucket=os.environ["BUCKET"]
-    try:
-        # Create DataFrame directly from the array
-        df = pd.DataFrame(markdown_array)
-        
-        # Convert to PyArrow Table
-        table = pa.Table.from_pandas(df)
-        
-        # Write to bytes buffer
-        buf = io.BytesIO()
-        pq.write_table(
-            table,
-            buf,
-            compression='SNAPPY',
-            use_dictionary=True,
-            version='2.6'
-        )
-        
-        # Get bytes and upload
-        parquet_bytes = buf.getvalue()
-        buf.close()
-
-        # create filename
-        path = url.split('/')[-1]
-        title, id = path.split('-', 1)
-    
-        filename = f"{title.lower().replace(' ', '_')}_{id}.parquet"
-        
-        return upload_to_s3_api.remote(
-            parquet_bytes=parquet_bytes,
-            file_name=filename,
-            bucket=bucket,
-            base_path=base_path,
-            api_token=api_token,
-            api_url=api_url
-        )
-        
-    except Exception as e:
-        error_msg = f"Error processing markdown array: {str(e)}"
-        print(error_msg)
-        return {"error": error_msg}
 
 @app.function(secrets=[modal.Secret.from_name("s3-credential")])
 def upload_to_s3_api(
